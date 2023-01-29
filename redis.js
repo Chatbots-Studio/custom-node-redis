@@ -5,6 +5,12 @@ module.exports = function (RED) {
   let connections = {};
   let usedConn = {};
 
+  function logAction(node, log) {
+    log.nodeId = node.id;
+    log.timestamp = Date.now();
+    node.log(log);
+  }
+
   function RedisConfig(n) {
     RED.nodes.createNode(this, n);
     this.name = n.name;
@@ -18,6 +24,9 @@ module.exports = function (RED) {
         this
       );
     }
+    try {
+      this.options = JSON.parse(this.options);
+    } catch (e) { }
   }
   RED.nodes.registerType("redis-config", RedisConfig);
 
@@ -45,19 +54,22 @@ module.exports = function (RED) {
       client.on("pmessage", function (pattern, channel, message) {
         var payload = null;
         try {
-          if(node.obj){
+          if (node.obj) {
             payload = JSON.parse(message);
-          }else{
+          } else {
             payload = message;
           }
         } catch (err) {
           payload = message;
         } finally {
-          node.send({
+          const result = {
             pattern: pattern,
             topic: channel,
             payload: payload,
-          });
+          };
+
+          logAction(node, { operation: node.command, type: "output", result })
+          node.send(result);
         }
       });
       client[node.command](node.topic, (err, count) => {
@@ -71,18 +83,21 @@ module.exports = function (RED) {
       client.on("message", function (channel, message) {
         var payload = null;
         try {
-          if(node.obj){
+          if (node.obj) {
             payload = JSON.parse(message);
-          }else{
+          } else {
             payload = message;
           }
         } catch (err) {
           payload = message;
         } finally {
-          node.send({
+          const result = {
             topic: channel,
             payload: payload,
-          });
+          };
+
+          logAction(node, { operation: node.command, type: "output", result });
+          node.send(result);
         }
       });
       client[node.command](node.topic, (err, count) => {
@@ -103,18 +118,21 @@ module.exports = function (RED) {
               if (data !== null && data.length == 2) {
                 var payload = null;
                 try {
-                  if(node.obj){
+                  if (node.obj) {
                     payload = JSON.parse(data[1]);
-                  }else{
+                  } else {
                     payload = data[1];
                   }
                 } catch (err) {
                   payload = data[1];
                 } finally {
-                  node.send({
+                  const result = {
                     topic: node.topic,
                     payload: payload,
-                  });
+                  };
+
+                  logAction(node, { operation: node.command, type: "output", result });
+                  node.send(result);
                 }
               }
               cb(null);
@@ -124,7 +142,7 @@ module.exports = function (RED) {
               running = false;
             });
         },
-        () => {}
+        () => { }
       );
     }
     node.status({
@@ -144,20 +162,20 @@ module.exports = function (RED) {
     this.topic = n.topic;
     this.obj = n.obj;
     var node = this;
- 
+
     let client = getConn(this.server, node.server.name);
 
     node.on("close", function (done) {
       node.status({});
-      disconnect( node.server.name);
+      disconnect(node.server.name);
       client = null;
       done();
     });
 
     node.on("input", function (msg, send, done) {
       var topic;
-      send = send || function() { node.send.apply(node,arguments) }
-      done = done || function(err) { if(err)node.error(err, msg); }
+      send = send || function () { node.send.apply(node, arguments) }
+      done = done || function (err) { if (err) node.error(err, msg); }
       if (msg.topic !== undefined && msg.topic !== "") {
         topic = msg.topic;
       } else {
@@ -167,11 +185,19 @@ module.exports = function (RED) {
         done(new Error("Missing topic, please send topic on msg or set Topic on node."));
       } else {
         try {
-          if(node.obj){
+          const data = {
+            topic: node.topic,
+          };
+          if (node.obj) {
             client[node.command](topic, JSON.stringify(msg.payload));
-          }else{
+            data.payload = JSON.stringify(msg.payload);
+          } else {
             client[node.command](topic, msg.payload);
+            data.payload = msg.payload;
           }
+
+          logAction(node, { operation: node.command, type: "input", data });
+
           done();
         } catch (err) {
           done(err);
@@ -203,8 +229,8 @@ module.exports = function (RED) {
 
     node.on("input", function (msg, send, done) {
       let topic = undefined;
-      send = send || function() { node.send.apply(node,arguments) }
-      done = done || function(err) { if(err)node.error(err, msg); }
+      send = send || function () { node.send.apply(node, arguments) }
+      done = done || function (err) { if (err) node.error(err, msg); }
 
       if (msg.topic !== undefined && msg.topic !== "") {
         topic = msg.topic;
@@ -251,6 +277,7 @@ module.exports = function (RED) {
       }
 
       let response = function (err, res) {
+        const payload = err ? err : res;
         if (err) {
           done(err);
         } else {
@@ -258,6 +285,7 @@ module.exports = function (RED) {
           send(msg);
           done();
         }
+        logAction(node, { operation: node.command, type: "output", data: { payload } });
       };
 
       if (!payload) {
@@ -271,6 +299,13 @@ module.exports = function (RED) {
       } else {
         client.call(node.command, response);
       }
+      const data = {
+        topic,
+        payload,
+      };
+
+      logAction(node, { operation: node.command, type: "input", data });
+
     });
   }
   RED.nodes.registerType("redis-command", RedisCmd);
@@ -316,8 +351,8 @@ module.exports = function (RED) {
     }
 
     node.on("input", function (msg, send, done) {
-      send = send || function() { node.send.apply(node,arguments) }
-      done = done || function(err) { if(err)node.error(err, msg); }
+      send = send || function () { node.send.apply(node, arguments) }
+      done = done || function (err) { if (err) node.error(err, msg); }
       if (node.keyval > 0 && !Array.isArray(msg.payload)) {
         throw Error("Payload is not Array");
       }
@@ -330,6 +365,7 @@ module.exports = function (RED) {
         args = [node.func, node.keyval].concat(msg.payload);
       }
       client[node.command](args, function (err, res) {
+        const payload = err ? err : res;
         if (err) {
           done(err);
         } else {
@@ -337,7 +373,13 @@ module.exports = function (RED) {
           send(msg);
           done();
         }
+        logAction(node, { operation: node.command, type: "output", data: { payload } });
       });
+      const data = {
+        args
+      };
+
+      logAction(node, { operation: node.command, type: "input", data });
     });
   }
   RED.nodes.registerType("redis-lua-script", RedisLua);
@@ -352,7 +394,38 @@ module.exports = function (RED) {
     var node = this;
     let client = getConn(this.server, id);
 
-    this.context()[node.location].set(node.topic, client);
+    const redisClient = { ...client };
+
+    redisClient.set = function (...args) {
+      logAction(node, { nodeId: node.id, operation: "set", type: "input", data: { args } });
+      const promise = client.set.apply(client, args);
+      promise.then(result => logAction(node, { operation: "set", type: "output", result }));
+      return promise;
+    }
+
+    redisClient.get = function (...args) {
+      logAction(node, { nodeId: node.id, operation: "get", type: "input", data: { args } });
+      const promise = client.get.apply(client, args);
+      promise.then(result => logAction(node, { operation: "get", type: "output", result }));
+      return promise;
+    }
+
+    redisClient.publish = function (...args) {
+      logAction(node, { nodeId: node.id, operation: "publish", type: "input", data: { args } });
+      const promise = client.publish.apply(client, args);
+      promise.then(result => logAction(node, { operation: "publish", type: "output", result }));
+      return promise;
+    }
+
+    redisClient.subscribe = function (...args) {
+      logAction(node, { nodeId: node.id, operation: "subscribe", type: "input", data: { args } });
+      const promise = client.subscribe.apply(client, args);
+      promise.then(result => logAction(node, { operation: "subscribe", type: "output", result }));
+      return promise;
+    }
+
+    this.context()[node.location].set(node.topic, redisClient);
+
     node.status({
       fill: "green",
       shape: "dot",
