@@ -6,8 +6,13 @@ module.exports = function (RED) {
   let usedConn = {};
 
   function logAction(node, log) {
+    log.ProcessName = process.env.PROCESS_NAME || '';
+    log.Type = 'REDIS';
+    log.NodeType = node.type;
+    log.nodeName = node.name;
     log.nodeId = node.id;
     log.timestamp = Date.now();
+    log.flowId = node.z;
     node.log(log);
   }
 
@@ -68,7 +73,7 @@ module.exports = function (RED) {
             payload: payload,
           };
 
-          logAction(node, { operation: node.command, type: "output", result })
+          logAction(node, { Action: node.command, io: "output", result })
           node.send(result);
         }
       });
@@ -96,7 +101,7 @@ module.exports = function (RED) {
             payload: payload,
           };
 
-          logAction(node, { operation: node.command, type: "output", result });
+          logAction(node, { Action: node.command, io: "output", result });
           node.send(result);
         }
       });
@@ -131,7 +136,7 @@ module.exports = function (RED) {
                     payload: payload,
                   };
 
-                  logAction(node, { operation: node.command, type: "output", result });
+                  logAction(node, { Action: node.command, io: "output", result });
                   node.send(result);
                 }
               }
@@ -196,7 +201,7 @@ module.exports = function (RED) {
             data.payload = msg.payload;
           }
 
-          logAction(node, { operation: node.command, type: "input", data });
+          logAction(node, { Action: node.command, io: "input", data });
 
           done();
         } catch (err) {
@@ -285,7 +290,7 @@ module.exports = function (RED) {
           send(msg);
           done();
         }
-        logAction(node, { operation: node.command, type: "output", data: { payload } });
+        logAction(node, { Action: node.command, io: "output", data: { payload } });
       };
 
       if (!payload) {
@@ -304,7 +309,7 @@ module.exports = function (RED) {
         payload,
       };
 
-      logAction(node, { operation: node.command, type: "input", data });
+      logAction(node, { Action: node.command, io: "input", data });
 
     });
   }
@@ -373,13 +378,13 @@ module.exports = function (RED) {
           send(msg);
           done();
         }
-        logAction(node, { operation: node.command, type: "output", data: { payload } });
+        logAction(node, { Action: node.command, io: "output", data: { payload } });
       });
       const data = {
         args
       };
 
-      logAction(node, { operation: node.command, type: "input", data });
+      logAction(node, { Action: node.command, io: "input", data });
     });
   }
   RED.nodes.registerType("redis-lua-script", RedisLua);
@@ -396,31 +401,45 @@ module.exports = function (RED) {
 
     const redisClient = { ...client };
 
+    redisClient.keys = function (...args) {
+      logAction(node, { nodeId: node.id, Action: "keys", io: "input", data: { args } });
+      const promise = client.keys.apply(client, args);
+      promise.then(result => logAction(node, { Action: "keys", io: "output", result }));
+      return promise;
+    }
+
+    redisClient.del = function (...args) {
+      logAction(node, { nodeId: node.id, Action: "del", io: "input", data: { args } });
+      const promise = client.del.apply(client, args);
+      promise.then(result => logAction(node, { Action: "del", io: "output", result }));
+      return promise;
+    }
+
     redisClient.set = function (...args) {
-      logAction(node, { nodeId: node.id, operation: "set", type: "input", data: { args } });
+      logAction(node, { nodeId: node.id, Action: "set", io: "input", data: { args } });
       const promise = client.set.apply(client, args);
-      promise.then(result => logAction(node, { operation: "set", type: "output", result }));
+      promise.then(result => logAction(node, { Action: "set", io: "output", result }));
       return promise;
     }
 
     redisClient.get = function (...args) {
-      logAction(node, { nodeId: node.id, operation: "get", type: "input", data: { args } });
+      logAction(node, { nodeId: node.id, Action: "get", io: "input", data: { args } });
       const promise = client.get.apply(client, args);
-      promise.then(result => logAction(node, { operation: "get", type: "output", result }));
+      promise.then(result => logAction(node, { Action: "get", io: "output", result }));
       return promise;
     }
 
     redisClient.publish = function (...args) {
-      logAction(node, { nodeId: node.id, operation: "publish", type: "input", data: { args } });
+      logAction(node, { nodeId: node.id, Action: "publish", io: "input", data: { args } });
       const promise = client.publish.apply(client, args);
-      promise.then(result => logAction(node, { operation: "publish", type: "output", result }));
+      promise.then(result => logAction(node, { Action: "publish", io: "output", result }));
       return promise;
     }
 
     redisClient.subscribe = function (...args) {
-      logAction(node, { nodeId: node.id, operation: "subscribe", type: "input", data: { args } });
+      logAction(node, { nodeId: node.id, Action: "subscribe", io: "input", data: { args } });
       const promise = client.subscribe.apply(client, args);
-      promise.then(result => logAction(node, { operation: "subscribe", type: "output", result }));
+      promise.then(result => logAction(node, { Action: "subscribe", io: "output", result }));
       return promise;
     }
 
