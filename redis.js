@@ -30,7 +30,7 @@ module.exports = function (RED) {
       );
     }
     try {
-      this.options = JSON.parse(this.options);
+      this.options = JSON.parse(this.options.replace(/\'/g, '"'));
     } catch (e) { }
   }
   RED.nodes.registerType("redis-config", RedisConfig);
