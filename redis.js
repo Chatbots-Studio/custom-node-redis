@@ -5,6 +5,13 @@ module.exports = function (RED) {
   let connections = {};
   let usedConn = {};
 
+  function uuidv4() {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+      var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+      return v.toString(16);
+    });
+  }
+
   function logAction(node, log) {
     log.ProcessName = process.env.PROCESS_NAME || '';
     log.Type = 'REDIS';
@@ -72,8 +79,8 @@ module.exports = function (RED) {
             topic: channel,
             payload: payload,
           };
-
-          logAction(node, { Action: node.command, io: "output", result })
+          const trace = uuidv4();
+          logAction(node, { Action: node.command, io: "output", result, trace })
           node.send(result);
         }
       });
@@ -100,8 +107,8 @@ module.exports = function (RED) {
             topic: channel,
             payload: payload,
           };
-
-          logAction(node, { Action: node.command, io: "output", result });
+          const trace = uuidv4();
+          logAction(node, { Action: node.command, io: "output", result, trace });
           node.send(result);
         }
       });
@@ -135,8 +142,8 @@ module.exports = function (RED) {
                     topic: node.topic,
                     payload: payload,
                   };
-
-                  logAction(node, { Action: node.command, io: "output", result });
+                  const trace = uuidv4();
+                  logAction(node, { Action: node.command, io: "output", result, trace });
                   node.send(result);
                 }
               }
@@ -201,7 +208,7 @@ module.exports = function (RED) {
             data.payload = msg.payload;
           }
 
-          logAction(node, { Action: node.command, io: "input", data });
+          logAction(node, { Action: node.command, io: "input", data, trace });
 
           done();
         } catch (err) {
@@ -233,6 +240,7 @@ module.exports = function (RED) {
     });
 
     node.on("input", function (msg, send, done) {
+      const trace = uuidv4();
       let topic = undefined;
       send = send || function () { node.send.apply(node, arguments) }
       done = done || function (err) { if (err) node.error(err, msg); }
@@ -290,7 +298,7 @@ module.exports = function (RED) {
           send(msg);
           done();
         }
-        logAction(node, { Action: node.command, io: "output", data: { payload } });
+        logAction(node, { Action: node.command, io: "output", data: { payload }, trace });
       };
 
       if (!payload) {
@@ -309,7 +317,7 @@ module.exports = function (RED) {
         payload,
       };
 
-      logAction(node, { Action: node.command, io: "input", data });
+      logAction(node, { Action: node.command, io: "input", data, trace });
 
     });
   }
@@ -356,6 +364,7 @@ module.exports = function (RED) {
     }
 
     node.on("input", function (msg, send, done) {
+      const trace = uuidv4();
       send = send || function () { node.send.apply(node, arguments) }
       done = done || function (err) { if (err) node.error(err, msg); }
       if (node.keyval > 0 && !Array.isArray(msg.payload)) {
@@ -378,13 +387,13 @@ module.exports = function (RED) {
           send(msg);
           done();
         }
-        logAction(node, { Action: node.command, io: "output", data: { payload } });
+        logAction(node, { Action: node.command, io: "output", data: { payload }, trace });
       });
       const data = {
         args
       };
 
-      logAction(node, { Action: node.command, io: "input", data });
+      logAction(node, { Action: node.command, io: "input", data, trace });
     });
   }
   RED.nodes.registerType("redis-lua-script", RedisLua);
@@ -402,44 +411,49 @@ module.exports = function (RED) {
     const redisClient = { ...client };
 
     redisClient.keys = function (...args) {
-      logAction(node, { nodeId: node.id, Action: "keys", io: "input", data: { args } });
+      const trace = uuidv4();
+      logAction(node, { nodeId: node.id, Action: "keys", io: "input", data: { args }, trace });
       const promise = client.keys.apply(client, args);
-      promise.then(result => logAction(node, { Action: "keys", io: "output", result }));
+      promise.then(result => logAction(node, { Action: "keys", io: "output", result, trace }));
       return promise;
     }
 
     redisClient.del = function (...args) {
-      logAction(node, { nodeId: node.id, Action: "del", io: "input", data: { args } });
+      const trace = uuidv4();
+      logAction(node, { nodeId: node.id, Action: "del", io: "input", data: { args }, trace });
       const promise = client.del.apply(client, args);
-      promise.then(result => logAction(node, { Action: "del", io: "output", result }));
+      promise.then(result => logAction(node, { Action: "del", io: "output", result, trace }));
       return promise;
     }
 
     redisClient.set = function (...args) {
-      logAction(node, { nodeId: node.id, Action: "set", io: "input", data: { args } });
+      const trace = uuidv4();
+      logAction(node, { nodeId: node.id, Action: "set", io: "input", data: { args }, trace });
       const promise = client.set.apply(client, args);
-      promise.then(result => logAction(node, { Action: "set", io: "output", result }));
+      promise.then(result => logAction(node, { Action: "set", io: "output", result, trace }));
       return promise;
     }
 
     redisClient.get = function (...args) {
-      logAction(node, { nodeId: node.id, Action: "get", io: "input", data: { args } });
+      const trace = uuidv4();
+      logAction(node, { nodeId: node.id, Action: "get", io: "input", data: { args }, trace });
       const promise = client.get.apply(client, args);
-      promise.then(result => logAction(node, { Action: "get", io: "output", result }));
+      promise.then(result => logAction(node, { Action: "get", io: "output", result, trace }));
       return promise;
     }
 
     redisClient.publish = function (...args) {
-      logAction(node, { nodeId: node.id, Action: "publish", io: "input", data: { args } });
+      const trace = uuidv4();
+      logAction(node, { nodeId: node.id, Action: "publish", io: "input", data: { args }, trace });
       const promise = client.publish.apply(client, args);
-      promise.then(result => logAction(node, { Action: "publish", io: "output", result }));
+      promise.then(result => logAction(node, { Action: "publish", io: "output", result, trace }));
       return promise;
     }
 
     redisClient.subscribe = function (...args) {
-      logAction(node, { nodeId: node.id, Action: "subscribe", io: "input", data: { args } });
+      logAction(node, { nodeId: node.id, Action: "subscribe", io: "input", data: { args }, trace });
       const promise = client.subscribe.apply(client, args);
-      promise.then(result => logAction(node, { Action: "subscribe", io: "output", result }));
+      promise.then(result => logAction(node, { Action: "subscribe", io: "output", result, trace }));
       return promise;
     }
 
